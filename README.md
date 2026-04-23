@@ -47,3 +47,25 @@ http://localhost:3000
 ```
 
 Jesli na Railway ustawisz `PORT`, aplikacja i bot beda dzialac razem w jednym procesie.
+
+## Migracja na nowe konto Railway bez utraty danych
+
+Ten bot umie przy pierwszym starcie na pustym `Volume` skopiowac dane z plikow seed.
+
+Przed wrzuceniem na nowe repo:
+
+1. skopiuj obecny `config.json` do `config.seed.json`
+2. skopiuj obecny `config.backup.json` do `config.backup.seed.json`
+3. wrzuc te pliki razem z kodem na nowe prywatne repo GitHub
+4. na nowym Railway podepnij `Volume`
+5. zdeployuj projekt
+
+Przy pierwszym starcie:
+- jesli `Volume` jest pusty, bot skopiuje dane z `config.seed.json`
+- i utworzy tez `config.backup.json` na volume
+
+Po potwierdzeniu, ze wszystko sie przenioslo, najlepiej usun pliki:
+- `config.seed.json`
+- `config.backup.seed.json`
+
+i zrob kolejny deploy.

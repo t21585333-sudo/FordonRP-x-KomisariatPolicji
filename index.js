@@ -36,10 +36,13 @@ const PANEL_PORT = Number(process.env.PORT || 3000);
 const PANEL_ADMIN_KEY = (process.env.PANEL_ADMIN_KEY || '').trim();
 const PANEL_BASE_URL = String(process.env.PANEL_BASE_URL || `http://localhost:${PANEL_PORT}`).replace(/\/$/, '');
 const DISCORD_OAUTH_REDIRECT_URI = `${PANEL_BASE_URL}/api/panel/discord/callback`;
+const APP_DIR = process.cwd();
 const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || process.cwd();
 const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 const CONFIG_BACKUP_PATH = path.join(DATA_DIR, 'config.backup.json');
 const CONFIG_TEMP_PATH = path.join(DATA_DIR, 'config.json.tmp');
+const CONFIG_SEED_PATH = path.join(APP_DIR, 'config.seed.json');
+const CONFIG_BACKUP_SEED_PATH = path.join(APP_DIR, 'config.backup.seed.json');
 const PANEL_DIR = path.join(process.cwd(), 'panel');
 const PANEL_PERMISSION_KEYS = [
   'viewKartoteka',
@@ -71,6 +74,24 @@ const discordOAuthStates = new Map();
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+function bootstrapSeededConfig() {
+  const hasMainConfig = fs.existsSync(CONFIG_PATH);
+  if (hasMainConfig) return;
+
+  const seedPath = fs.existsSync(CONFIG_SEED_PATH)
+    ? CONFIG_SEED_PATH
+    : (fs.existsSync(CONFIG_BACKUP_SEED_PATH) ? CONFIG_BACKUP_SEED_PATH : null);
+
+  if (!seedPath) return;
+
+  fs.copyFileSync(seedPath, CONFIG_PATH);
+
+  if (!fs.existsSync(CONFIG_BACKUP_PATH)) {
+    const backupSeedPath = fs.existsSync(CONFIG_BACKUP_SEED_PATH) ? CONFIG_BACKUP_SEED_PATH : seedPath;
+    fs.copyFileSync(backupSeedPath, CONFIG_BACKUP_PATH);
+  }
 }
 
 let guildConfig = {};
@@ -130,6 +151,7 @@ function ensureGuild(guildId) {
   return cfg;
 }
 
+bootstrapSeededConfig();
 loadConfig();
 
 function isConfigOwner(userId) {
