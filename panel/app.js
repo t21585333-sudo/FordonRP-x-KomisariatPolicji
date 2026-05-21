@@ -25,8 +25,6 @@ const state = {
   activityLogs: [],
   activityActor: 'all',
   panelUsers: [],
-  mandateCaseSignature: '',
-  dismissedMandateCaseSignature: ''
 };
 
 const authOverlay = document.getElementById('authOverlay');
@@ -95,11 +93,6 @@ const activityActorSelect = document.getElementById('activityActorSelect');
 const activityLogsLoadButton = document.getElementById('activityLogsLoadButton');
 const activityLogsCount = document.getElementById('activityLogsCount');
 const activityLogsList = document.getElementById('activityLogsList');
-const mandateCaseModal = document.getElementById('mandateCaseModal');
-const mandateCaseBackdrop = document.getElementById('mandateCaseBackdrop');
-const closeMandateCaseButton = document.getElementById('closeMandateCaseButton');
-const mandateCaseList = document.getElementById('mandateCaseList');
-
 const statCardTemplate = document.getElementById('statCardTemplate');
 const listCardTemplate = document.getElementById('listCardTemplate');
 const kartotekaTemplate = document.getElementById('kartotekaTemplate');
@@ -170,9 +163,6 @@ function clearSession() {
   state.sessionPermissions = null;
   state.activityLogs = [];
   state.activityActor = 'all';
-  state.mandateCaseSignature = '';
-  state.dismissedMandateCaseSignature = '';
-  mandateCaseModal?.classList.add('hidden');
   localStorage.removeItem('panelSessionToken');
   localStorage.removeItem('panelSessionRole');
   localStorage.removeItem('panelSessionUsername');
@@ -460,170 +450,6 @@ function openEditor(config) {
 function closeEditor() {
   editorModal.classList.add('hidden');
   editorForm.onsubmit = null;
-}
-
-function getRelevantMandateCases() {
-  if (!state.snapshot || !state.sessionDiscordUserId) return [];
-  return state.snapshot.mandates.filter(mandate =>
-    mandate.status !== 'zamkniety' &&
-    (mandate.targetId === state.sessionDiscordUserId || mandate.issuerId === state.sessionDiscordUserId)
-  );
-}
-
-function getMandateCaseSignature(cases = []) {
-  return cases
-    .map(mandate => `${mandate.id}:${mandate.status}`)
-    .join('|');
-}
-
-function isMandateCaseTarget(mandate) {
-  return mandate.targetId === state.sessionDiscordUserId;
-}
-
-function isMandateCaseIssuer(mandate) {
-  return mandate.issuerId === state.sessionDiscordUserId;
-}
-
-function createMandateCaseActionButton(label, variant = 'ghost-button', onClick) {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = variant;
-  button.textContent = label;
-  button.addEventListener('click', onClick);
-  return button;
-}
-
-async function performMandateCaseAction(mandateId, action) {
-  const result = await api(`/api/dashboard/${state.guildId}/mandates/${mandateId}/action`, {
-    method: 'POST',
-    body: JSON.stringify({ action })
-  });
-  await fetchDashboard({ manual: false });
-  if (result?.message) {
-    playSignal(action === 'odrzuc' ? 'alert' : 'soft');
-  }
-}
-
-function openMandateCaseModal() {
-  mandateCaseModal.classList.remove('hidden');
-}
-
-function closeMandateCaseModal(persistDismiss = true) {
-  mandateCaseModal.classList.add('hidden');
-  if (persistDismiss) {
-    state.dismissedMandateCaseSignature = state.mandateCaseSignature;
-  }
-}
-
-function renderMandateCaseModal() {
-  if (!mandateCaseList) return;
-  const cases = getRelevantMandateCases();
-  mandateCaseList.innerHTML = '';
-
-  if (cases.length === 0) {
-    closeMandateCaseModal(false);
-    return;
-  }
-
-  for (const mandate of cases) {
-    const node = listCardTemplate.content.firstElementChild.cloneNode(true);
-    const isIssuer = isMandateCaseIssuer(mandate);
-    const isTarget = isMandateCaseTarget(mandate);
-
-    node.querySelector('.list-title').textContent = `${mandate.id} | ${mandate.targetLabel}`;
-    node.querySelector('.status-badge').textContent = mandate.statusLabel;
-    node.querySelector('.list-meta').textContent = `Wystawil ${mandate.issuerLabel} | ${mandate.createdAtLabel}`;
-    const descriptionNode = node.querySelector('.list-description');
-    descriptionNode.textContent = mandate.reason;
-
-    const instruction = document.createElement('p');
-    instruction.className = 'list-description';
-    instruction.textContent = mandate.status === 'oczekiwanie-na-zaplate'
-      ? 'Wejdz na serwer Fordon RP i przelej kase w ekonomii do 01 | Polish Potato. Po przelewie osoba, ktora wystawila mandat, potwierdzi oplacenie.'
-      : mandate.status === 'odrzucony-oczekuje-platnosci'
-        ? 'Mandat jest odrzucony, ale nadal mozesz kliknac ZAPLAC i zmienic decyzje.'
-        : mandate.status === 'zaplacony'
-          ? 'Mandat jest juz oznaczony jako oplacony.'
-          : 'Mozesz podjac decyzje tak samo jak na Discordzie.';
-    descriptionNode.after(instruction);
-
-    const tags = node.querySelector('.list-tags');
-    tags.append(
-      createTag(`Kwota: ${mandate.amount} PLN`),
-      createTag(`Punkty: ${mandate.penaltyPoints ?? 'brak'}`)
-    );
-    if (mandate.description?.trim()) {
-      tags.append(createTag(`Opis: ${mandate.description.trim()}`));
-    }
-
-    const actions = node.querySelector('.card-actions');
-    actions.className = 'mandate-case-actions';
-    actions.innerHTML = '';
-
-    if (isTarget) {
-      const payButton = createMandateCaseActionButton('ZAPLAC', 'primary-button', async () => {
-        try {
-          await performMandateCaseAction(mandate.id, 'zaplac');
-        } catch (error) {
-          window.alert(error.message);
-        }
-      });
-      const rejectButton = createMandateCaseActionButton('ODRZUC', 'ghost-button danger-button', async () => {
-        try {
-          await performMandateCaseAction(mandate.id, 'odrzuc');
-        } catch (error) {
-          window.alert(error.message);
-        }
-      });
-
-      payButton.disabled = mandate.status === 'oczekiwanie-na-zaplate' || mandate.status === 'zaplacony' || mandate.status === 'zamkniety';
-      rejectButton.disabled = mandate.status === 'odrzucony-oczekuje-platnosci' || mandate.status === 'oczekiwanie-na-zaplate' || mandate.status === 'zaplacony' || mandate.status === 'zamkniety';
-      actions.append(payButton, rejectButton);
-    }
-
-    if (isIssuer) {
-      const paidButton = createMandateCaseActionButton('OPLACONO', 'ghost-button', async () => {
-        try {
-          await performMandateCaseAction(mandate.id, 'oplacono');
-        } catch (error) {
-          window.alert(error.message);
-        }
-      });
-      const closeButton = createMandateCaseActionButton('ZAMKNIJ SPRAWE', 'ghost-button', async () => {
-        try {
-          await performMandateCaseAction(mandate.id, 'zamknij');
-        } catch (error) {
-          window.alert(error.message);
-        }
-      });
-
-      paidButton.disabled = mandate.status !== 'oczekiwanie-na-zaplate';
-      closeButton.disabled = mandate.status === 'zamkniety';
-      actions.append(paidButton, closeButton);
-    }
-
-    if (!actions.children.length) {
-      actions.remove();
-    }
-
-    mandateCaseList.appendChild(node);
-  }
-}
-
-function syncMandateCaseModal() {
-  const cases = getRelevantMandateCases();
-  const signature = getMandateCaseSignature(cases);
-  state.mandateCaseSignature = signature;
-  renderMandateCaseModal();
-
-  if (!signature) {
-    state.dismissedMandateCaseSignature = '';
-    return;
-  }
-
-  if (signature !== state.dismissedMandateCaseSignature) {
-    openMandateCaseModal();
-  }
 }
 
 async function deleteMandate(mandateId) {
@@ -1391,7 +1217,6 @@ function render(snapshot) {
   renderKartoteki(snapshot);
   renderEarningsStats();
   renderEarningsMandates();
-  syncMandateCaseModal();
   updateRoleView();
   setCategory(state.currentCategory);
 }
@@ -1684,8 +1509,6 @@ activityLogsLoadButton?.addEventListener('click', () => {
 
 closeEditorButton.addEventListener('click', closeEditor);
 editorBackdrop.addEventListener('click', closeEditor);
-closeMandateCaseButton?.addEventListener('click', () => closeMandateCaseModal(true));
-mandateCaseBackdrop?.addEventListener('click', () => closeMandateCaseModal(true));
 
 setAuthMode(state.authMode);
 setCategory(state.currentCategory);
